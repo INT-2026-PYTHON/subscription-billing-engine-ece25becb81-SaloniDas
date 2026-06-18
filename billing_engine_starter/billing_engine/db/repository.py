@@ -394,6 +394,14 @@ class SubscriptionRepository:
                 new_start.isoformat(),
                 new_end.isoformat(),
             )
+            
+    def update_plan(self, subscription_id: int, new_plan_id: int) -> None:
+        with self.db.transaction() as conn:
+            q.update_subscription_plan(
+                conn,
+                subscription_id,
+                new_plan_id,
+            )
 
 # ============================================================
 # USAGE
@@ -503,15 +511,21 @@ class InvoiceRepository:
             return q.count_invoices_for_subscription(conn, subscription_id)
         
     def mark_paid(self, invoice_id: int) -> None:
-        # TODO Day 4.
-        # Hint: q.update_invoice_status(..., "PAID")
-        raise NotImplementedError("Day 4: implement InvoiceRepository.mark_paid")
-
+        with self.db.transaction() as conn:
+            q.update_invoice_status(
+                conn,
+                invoice_id,
+                "PAID",
+            )
+        
     def mark_failed(self, invoice_id: int) -> None:
-        # TODO Day 4.
-        # Hint: q.update_invoice_status(..., "FAILED")
-        raise NotImplementedError("Day 4: implement InvoiceRepository.mark_failed")
-
+         with self.db.transaction() as conn:
+            q.update_invoice_status(
+                conn,
+                invoice_id,
+                "FAILED",
+            )
+        
     def set_pdf_path(self, invoice_id: int, path: str) -> None:
         # TODO Day 4.
         # Hint: q.update_invoice_pdf_path(...)
