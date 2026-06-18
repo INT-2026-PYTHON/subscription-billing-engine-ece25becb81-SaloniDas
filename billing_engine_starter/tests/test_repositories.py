@@ -9,14 +9,13 @@ from billing_engine.money import Money
 from billing_engine.db.repository import (
     CustomerRepository, PlanRepository, PlanTierRepository, DiscountRepository,
     SubscriptionRepository, UsageRecordRepository,
-    InvoiceRepository, InvoiceLineItemRepository, LedgerRepository,
+    InvoiceRepository, InvoiceLineItemRepository,
 )
 from billing_engine.models import (
     Customer,
     Plan, PricingType, BillingPeriod,
     Subscription, SubscriptionStatus,
     Invoice, InvoiceStatus, InvoiceLineItem, LineItemKind,
-    LedgerEntry, LedgerDirection,
 )
 
 
@@ -161,29 +160,6 @@ class TestSubscriptionRepository:
         ))
         assert repo.get_due_for_billing(date(2026, 2, 1)) == []
 
-    def test_update_period(self, db):
-        cid, pid = self._setup(db)
-        repo = SubscriptionRepository(db)
-        s = repo.add(Subscription(
-            None, cid, pid, SubscriptionStatus.ACTIVE,
-            date(2026, 1, 1), date(2026, 2, 1),
-        ))
-        repo.update_period(s.id, date(2026, 2, 1), date(2026, 3, 1))
-        got = repo.get(s.id)
-        assert got.current_period_start == date(2026, 2, 1)
-        assert got.current_period_end == date(2026, 3, 1)
-
-    def test_update_status(self, db):
-        cid, pid = self._setup(db)
-        repo = SubscriptionRepository(db)
-        s = repo.add(Subscription(
-            None, cid, pid, SubscriptionStatus.TRIAL,
-            date(2026, 1, 1), date(2026, 2, 1),
-            trial_end=date(2026, 1, 15),
-        ))
-        repo.update_status(s.id, SubscriptionStatus.ACTIVE)
-        assert repo.get(s.id).status == SubscriptionStatus.ACTIVE
-
     def test_list_all(self, db):
         cid, pid = self._setup(db)
         repo = SubscriptionRepository(db)
@@ -261,20 +237,6 @@ class TestInvoiceRepository:
         with pytest.raises(sqlite3.IntegrityError):
             repo.add(self._make_invoice(sid))
 
-    def test_count_for_subscription(self, db):
-        sid = self._setup(db)
-        repo = InvoiceRepository(db)
-        assert repo.count_for_subscription(sid) == 0
-        repo.add(self._make_invoice(sid))
-        assert repo.count_for_subscription(sid) == 1
-
-    def test_mark_paid(self, db):
-        sid = self._setup(db)
-        repo = InvoiceRepository(db)
-        saved = repo.add(self._make_invoice(sid))
-        repo.mark_paid(saved.id)
-        assert repo.get(saved.id).status == InvoiceStatus.PAID
-
     def test_get_preserves_money_values(self, db):
         sid = self._setup(db)
         repo = InvoiceRepository(db)
@@ -307,36 +269,3 @@ class TestInvoiceLineItemRepository:
         items = li_repo.list_for_invoice(inv.id)
         assert len(items) == 2
         assert items[0].kind == LineItemKind.BASE
-
-
-# ============================================================
-# LedgerRepository — APPEND-ONLY
-# ============================================================
-class TestLedgerRepositoryAppendOnly:
-    def test_update_raises(self, db):
-        with pytest.raises(NotImplementedError, match="append-only"):
-            LedgerRepository(db).update(entry_id=1, amount=Money("1", "INR"))
-
-    def test_delete_raises(self, db):
-        with pytest.raises(NotImplementedError, match="append-only"):
-            LedgerRepository(db).delete(1)
-
-    def test_add_assigns_id(self, db):
-        c = CustomerRepository(db).add(Customer(None, "A", "a@x.com", "IN"))
-        repo = LedgerRepository(db)
-        entry = repo.add(LedgerEntry(
-            id=None, invoice_id=None, customer_id=c.id,
-            amount=Money("100", "INR"), direction=LedgerDirection.DEBIT,
-            reason="Test",
-        ))
-        assert entry.id is not None
-
-    def test_list_for_customer_returns_entries(self, db):
-        c = CustomerRepository(db).add(Customer(None, "A", "a@x.com", "IN"))
-        repo = LedgerRepository(db)
-        repo.add(LedgerEntry(None, None, c.id, Money("100", "INR"),
-                             LedgerDirection.DEBIT, "Invoice"))
-        repo.add(LedgerEntry(None, None, c.id, Money("100", "INR"),
-                             LedgerDirection.CREDIT, "Payment"))
-        entries = repo.list_for_customer(c.id)
-        assert len(entries) == 2

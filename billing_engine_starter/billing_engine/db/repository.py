@@ -56,40 +56,83 @@ from billing_engine.models import (
 # ============================================================
 # CUSTOMERS
 # ============================================================
-# Day 2: start here.
+# Day 2: start here.  
 class CustomerRepository:
     """Persistence boundary for customers.
 
-    A Customer is the billing account owner: invoices, subscriptions, and
-    ledger entries ultimately belong to a customer. This repository hides the
-    `customers` table and returns Customer dataclasses so the rest of the app
-    does not need to know SQL column names.
-    """
-
+        A Customer is the billing account owner: invoices, subscriptions, and
+        ledger entries ultimately belong to a customer. This repository hides the
+        `customers` table and returns Customer dataclasses so the rest of the app
+        does not need to know SQL column names. 
+    """ 
+        
+        
     def __init__(self, db: Database) -> None:
         self.db = db
 
     def add(self, customer: Customer) -> Customer:
-        # TODO Day 2
-        # Hint: q.insert_customer(...)
-        raise NotImplementedError("Day 2: implement CustomerRepository.add")
+        with self.db.transaction() as conn:
+            customer_id = q.insert_customer(
+                conn,
+                customer.name,
+                customer.email,
+                customer.country_code,
+                customer.state_code,
+            )
+
+        return Customer(
+            id=customer_id,
+            name=customer.name,
+            email=customer.email,
+            country_code=customer.country_code,
+            state_code=customer.state_code,
+        )
 
     def get(self, customer_id: int) -> Optional[Customer]:
-        # TODO Day 2
-        # Hint: q.select_customer_by_id(...)
-        raise NotImplementedError("Day 2: implement CustomerRepository.get")
+        with self.db.connect() as conn:
+            row = q.select_customer_by_id(conn, customer_id)
+
+        if row is None:
+            return None
+
+        return Customer(
+            id=row["id"],
+            name=row["name"],
+            email=row["email"],
+            country_code=row["country_code"],
+            state_code=row["state_code"],
+        )
 
     def find_by_email(self, email: str) -> Optional[Customer]:
-        # TODO Day 2
-        # Hint: q.select_customer_by_email(...)
-        raise NotImplementedError("Day 2: implement CustomerRepository.find_by_email")
+        with self.db.connect() as conn:
+            row = q.select_customer_by_email(conn, email)
+
+        if row is None:
+            return None
+
+        return Customer(
+            id=row["id"],
+            name=row["name"],
+            email=row["email"],
+            country_code=row["country_code"],
+            state_code=row["state_code"],
+        )
 
     def list_all(self) -> list[Customer]:
-        # TODO Day 2
-        # Hint: q.select_all_customers(...)
-        raise NotImplementedError("Day 2: implement CustomerRepository.list_all")
+        with self.db.connect() as conn:
+            rows = q.select_all_customers(conn)
 
-
+        return [
+            Customer(
+                id=r["id"],
+                name=r["name"],
+                email=r["email"],
+                country_code=r["country_code"],
+                state_code=r["state_code"],
+            )
+            for r in rows
+        ]
+        
 # ============================================================
 # PLANS  +  PLAN TIERS
 # ============================================================
@@ -106,19 +149,56 @@ class PlanRepository:
         self.db = db
 
     def add(self, plan: Plan) -> Plan:
-        # TODO Day 2.
-        # Hint: q.insert_plan(...)
-        raise NotImplementedError("Day 2: implement PlanRepository.add")
+        with self.db.transaction() as conn:
+            plan_id = q.insert_plan(
+                conn,
+                plan.name,
+                plan.pricing_type.value,
+                plan.billing_period.value,
+                plan.currency,
+                plan.config_json,
+            )
 
+        return Plan(
+            id=plan_id,
+            name=plan.name,
+            pricing_type=plan.pricing_type,
+            billing_period=plan.billing_period,
+            currency=plan.currency,
+            config_json=plan.config_json,
+        )
+        
     def get(self, plan_id: int) -> Optional[Plan]:
-        # TODO Day 2.
-        # Hint: q.select_plan_by_id(...)
-        raise NotImplementedError("Day 2: implement PlanRepository.get")
+        with self.db.connect() as conn:
+            row = q.select_plan_by_id(conn, plan_id)
 
+        if row is None:
+            return None
+
+        return Plan(
+            id=row["id"],
+            name=row["name"],
+            pricing_type=PricingType(row["pricing_type"]),
+            billing_period=BillingPeriod(row["billing_period"]),
+            currency=row["currency"],
+            config_json=row["config_json"],
+        )
+        
     def list_all(self) -> list[Plan]:
-        # TODO Day 2.
-        # Hint: q.select_all_plans(...)
-        raise NotImplementedError("Day 2: implement PlanRepository.list_all")
+        with self.db.connect() as conn:
+            rows = q.select_all_plans(conn)
+
+        return [
+            Plan(
+                id=r["id"],
+                name=r["name"],
+                pricing_type=PricingType(r["pricing_type"]),
+                billing_period=BillingPeriod(r["billing_period"]),
+                currency=r["currency"],
+                config_json=r["config_json"],
+            )
+            for r in rows
+        ]
 
 
 class PlanTierRepository:
@@ -133,15 +213,29 @@ class PlanTierRepository:
         self.db = db
 
     def add(self, plan_id: int, from_units: int, to_units: Optional[int], unit_price: Money) -> int:
-        # TODO Day 2.
-        # Hint: q.insert_plan_tier(...)
-        raise NotImplementedError("Day 2: implement PlanTierRepository.add")
+        with self.db.transaction() as conn:
+            tier_id = q.insert_plan_tier(
+                conn,
+                plan_id,
+                from_units,
+                to_units,
+                unit_price.to_storage(),
+            )
 
+        return tier_id
+    
     def list_for_plan(self, plan_id: int, currency: str) -> list[tuple[int, Optional[int], Money]]:
-        # TODO Day 2.
-        # Hint: q.select_plan_tiers(...)
-        raise NotImplementedError("Day 2: implement PlanTierRepository.list_for_plan")
+        with self.db.connect() as conn:
+            rows = q.select_plan_tiers(conn, plan_id)
 
+        return [
+            (
+                r["from_units"],
+                r["to_units"],
+                Money(r["unit_price"], currency),
+            )
+            for r in rows
+        ]
 
 # ============================================================
 # DISCOUNTS
@@ -159,15 +253,21 @@ class DiscountRepository:
         self.db = db
 
     def add(self, code: str, discount_type: str, value: str, currency: Optional[str] = None) -> int:
-        # TODO Day 2.
-        # Hint: q.insert_discount(...)
-        raise NotImplementedError("Day 2: implement DiscountRepository.add")
+        with self.db.transaction() as conn:
+            discount_id = q.insert_discount(
+                conn,
+                code,
+                discount_type,
+                value,
+                currency,
+            )
+        return discount_id
 
     def get_by_code(self, code: str) -> Optional[dict]:
-        # TODO Day 2.
-        # Hint: q.select_discount_by_code(...)
-        raise NotImplementedError("Day 2: implement DiscountRepository.get_by_code")
+        with self.db.connect() as conn:
+            row = q.select_discount_by_code(conn, code)
 
+        return dict(row) if row else None
 
 # ============================================================
 # SUBSCRIPTIONS
@@ -185,25 +285,88 @@ class SubscriptionRepository:
         self.db = db
 
     def add(self, subscription: Subscription) -> Subscription:
-        # TODO Day 2.
-        # Hint: q.insert_subscription(...)
-        raise NotImplementedError("Day 2: implement SubscriptionRepository.add")
+        with self.db.transaction() as conn:
+            sub_id = q.insert_subscription(
+                conn,
+                subscription.customer_id,
+                subscription.plan_id,
+                subscription.status.value,
+                subscription.current_period_start.isoformat(),
+                subscription.current_period_end.isoformat(),
+                subscription.trial_end.isoformat() if subscription.trial_end else None,
+                subscription.discount_id,
+                subscription.past_due_since.isoformat() if subscription.past_due_since else None,
+            )
+
+        return Subscription(
+            id=sub_id,
+            customer_id=subscription.customer_id,
+            plan_id=subscription.plan_id,
+            status=subscription.status,
+            current_period_start=subscription.current_period_start,
+            current_period_end=subscription.current_period_end,
+            trial_end=subscription.trial_end,
+            discount_id=subscription.discount_id,
+            past_due_since=subscription.past_due_since,
+        )
 
     def get(self, subscription_id: int) -> Optional[Subscription]:
-        # TODO Day 2.
-        # Hint: q.select_subscription_by_id(...)
-        raise NotImplementedError("Day 2: implement SubscriptionRepository.get")
+        with self.db.connect() as conn:
+            row = q.select_subscription_by_id(conn, subscription_id)
 
+        if row is None:
+            return None
+
+        return Subscription(
+            id=row["id"],
+            customer_id=row["customer_id"],
+            plan_id=row["plan_id"],
+            status=SubscriptionStatus(row["status"]),
+            current_period_start=date.fromisoformat(row["current_period_start"]),
+            current_period_end=date.fromisoformat(row["current_period_end"]),
+            trial_end=date.fromisoformat(row["trial_end"]) if row["trial_end"] else None,
+            discount_id=row["discount_id"],
+            past_due_since=date.fromisoformat(row["past_due_since"]) if row["past_due_since"] else None,
+        )
+    
     def list_all(self) -> list[Subscription]:
-        # TODO Day 2.
-        # Hint: q.select_all_subscriptions(...)
-        raise NotImplementedError("Day 2: implement SubscriptionRepository.list_all")
+        with self.db.connect() as conn:
+            rows = q.select_all_subscriptions(conn)
 
+        return [
+            Subscription(
+                id=r["id"],
+                customer_id=r["customer_id"],
+                plan_id=r["plan_id"],
+                status=SubscriptionStatus(r["status"]),
+                current_period_start=date.fromisoformat(r["current_period_start"]),
+                current_period_end=date.fromisoformat(r["current_period_end"]),
+                trial_end=date.fromisoformat(r["trial_end"]) if r["trial_end"] else None,
+                discount_id=r["discount_id"],
+                past_due_since=date.fromisoformat(r["past_due_since"]) if r["past_due_since"] else None,
+            )
+            for r in rows
+        ]
+    
     def get_due_for_billing(self, as_of: date) -> list[Subscription]:
-        # TODO Day 2.
-        # Hint: q.select_due_subscriptions(...)
-        raise NotImplementedError("Day 2: implement SubscriptionRepository.get_due_for_billing")
+        with self.db.connect() as conn:
+            rows = q.select_due_subscriptions(conn, as_of.isoformat())
 
+        return [
+            Subscription(
+                id=r["id"],
+                customer_id=r["customer_id"],
+                plan_id=r["plan_id"],
+                status=SubscriptionStatus(r["status"]),
+                current_period_start=date.fromisoformat(r["current_period_start"]),
+                current_period_end=date.fromisoformat(r["current_period_end"]),
+                trial_end=date.fromisoformat(r["trial_end"]) if r["trial_end"] else None,
+                discount_id=r["discount_id"],
+                past_due_since=date.fromisoformat(r["past_due_since"]) if r["past_due_since"] else None,
+            )
+            for r in rows
+        ]
+    
     # ------------------------------------------------------------------
     # Day 2 boundary:
     # Everything below this line in this class is intentionally deferred.
@@ -246,17 +409,25 @@ class UsageRecordRepository:
         self.db = db
 
     def add(self, subscription_id: int, metric: str, quantity: int) -> int:
-        # TODO Day 2.
-        # Hint: q.insert_usage_record(...)
-        raise NotImplementedError("Day 2: implement UsageRecordRepository.add")
-
+        with self.db.transaction() as conn:
+            return q.insert_usage_record(
+                conn,
+                subscription_id,
+                metric,
+                quantity,
+            )
+        
     def sum_for_period(
-        self, subscription_id: int, metric: str, period_start: date, period_end: date
-    ) -> int:
-        # TODO Day 2: SELECT COALESCE(SUM(quantity), 0) ...
-        # Hint: q.sum_usage_for_subscription_metric(...)
-        raise NotImplementedError("Day 2: implement UsageRecordRepository.sum_for_period")
+    self, subscription_id: int, metric: str, period_start: date, period_end: date
+) -> int:
+        with self.db.connect() as conn:
+            result = q.sum_usage_for_subscription_metric(
+                conn,
+                subscription_id,
+                metric,
+            )
 
+        return result or 0
 
 # ============================================================
 # INVOICES + LINE ITEMS
@@ -274,14 +445,56 @@ class InvoiceRepository:
         self.db = db
 
     def add(self, invoice: Invoice) -> Invoice:
-        # TODO Day 2.
-        # Hint: q.insert_invoice(...)
-        raise NotImplementedError("Day 2: implement InvoiceRepository.add")
+        with self.db.transaction() as conn:
+            invoice_id = q.insert_invoice(
+                conn,
+                invoice.subscription_id,
+                invoice.period_start.isoformat(),
+                invoice.period_end.isoformat(),
+                invoice.total.currency,   
+                invoice.subtotal.to_storage(),
+                invoice.discount_total.to_storage(),
+                invoice.tax_total.to_storage(),
+                invoice.total.to_storage(),
+                invoice.status.value,
+                invoice.issued_at.isoformat() if invoice.issued_at else None,
+                invoice.pdf_path,
+            )
 
+        return Invoice(
+            id=invoice_id,
+            subscription_id=invoice.subscription_id,
+            period_start=invoice.period_start,
+            period_end=invoice.period_end,
+            subtotal=invoice.subtotal,
+            discount_total=invoice.discount_total,
+            tax_total=invoice.tax_total,
+            total=invoice.total,
+            status=invoice.status,
+            issued_at=invoice.issued_at,
+            pdf_path=invoice.pdf_path,
+        )
+    
     def get(self, invoice_id: int) -> Optional[Invoice]:
-        # TODO Day 2.
-        # Hint: q.select_invoice_by_id(...)
-        raise NotImplementedError("Day 2: implement InvoiceRepository.get")
+        with self.db.connect() as conn:
+            row = q.select_invoice_by_id(conn, invoice_id)
+
+        if row is None:
+            return None
+
+        return Invoice(
+            id=row["id"],
+            subscription_id=row["subscription_id"],
+            period_start=date.fromisoformat(row["period_start"]),
+            period_end=date.fromisoformat(row["period_end"]),
+            subtotal=Money(row["subtotal"], row["currency"]),
+            discount_total=Money(row["discount_total"], row["currency"]),
+            tax_total=Money(row["tax_total"], row["currency"]),
+            total=Money(row["total"], row["currency"]),
+            status=InvoiceStatus(row["status"]),
+            issued_at=date.fromisoformat(row["issued_at"]) if row["issued_at"] else None,
+            pdf_path=row["pdf_path"],
+        )
 
     def count_for_subscription(self, subscription_id: int) -> int:
         # TODO Day 3.
@@ -316,15 +529,37 @@ class InvoiceLineItemRepository:
         self.db = db
 
     def add(self, line_item: InvoiceLineItem) -> InvoiceLineItem:
-        # TODO Day 2.
-        # Hint: q.insert_invoice_line_item(...)
-        raise NotImplementedError("Day 2: implement InvoiceLineItemRepository.add")
+        with self.db.transaction() as conn:
+            line_item_id = q.insert_invoice_line_item(
+                conn,
+                line_item.invoice_id,
+                line_item.description,
+                line_item.amount.to_storage(),
+                line_item.kind.value,
+            )
 
+        return InvoiceLineItem(
+            id=line_item_id,
+            invoice_id=line_item.invoice_id,
+            description=line_item.description,
+            amount=line_item.amount,
+            kind=line_item.kind,
+        )
+    
     def list_for_invoice(self, invoice_id: int) -> list[InvoiceLineItem]:
-        # TODO Day 2.
-        # Hint: q.select_line_items_for_invoice(...)
-        raise NotImplementedError("Day 2: implement InvoiceLineItemRepository.list_for_invoice")
+        with self.db.connect() as conn:
+            rows = q.select_line_items_for_invoice(conn, invoice_id)
 
+        return [
+            InvoiceLineItem(
+                id=r["id"],
+                invoice_id=r["invoice_id"],
+                description=r["description"],
+                amount=Money(r["amount"], "USD"),  
+                kind=LineItemKind(r["kind"]),
+            )
+            for r in rows
+        ]
 
 # ============================================================
 # DAY 3/4 ONLY — keep stubs for later
