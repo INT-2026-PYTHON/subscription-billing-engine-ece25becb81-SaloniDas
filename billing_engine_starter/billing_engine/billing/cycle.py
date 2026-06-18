@@ -13,9 +13,14 @@ from billing_engine.db import (
     Database,
     CustomerRepository, PlanRepository, SubscriptionRepository,
     UsageRecordRepository, InvoiceRepository, InvoiceLineItemRepository,
-    LedgerRepository,
+    LedgerRepository, 
 )
-from billing_engine.models import Subscription
+
+from billing_engine.models import Subscription, InvoiceLineItem
+from billing_engine.models import LedgerEntry, LedgerDirection
+from billing_engine.models import SubscriptionStatus, InvoiceStatus
+
+from billing_engine.billing.pipeline import build_invoice
 
 
 @dataclass
@@ -56,10 +61,112 @@ class BillingCycle:
 
     # --------------------------------------------------------
     def run(self, as_of: date) -> BillingResult:
-        """Bill all subscriptions whose current period ends on or before `as_of`."""
-        # TODO Day 3
-        raise NotImplementedError("Day 3: implement BillingCycle.run")
+        invoices_created = 0
+        invoices_skipped_duplicate = 0
+        trials_activated = 0
 
+        # -------------------------
+        # Phase 1: Activate trials
+        # -------------------------
+        for sub in self.subscription_repo.list_all():
+            if (
+                sub.status.value == "TRIAL"
+                and sub.trial_end
+                and sub.trial_end <= as_of
+            ):
+                self.subscription_repo.update_status(
+                    sub.id,
+                    "ACTIVE",
+                    None
+                )
+                trials_activated += 1
+
+        # -------------------------
+        # Phase 2: Bill due subs
+        # -------------------------
+        due = self.subscription_repo.get_due_for_billing(as_of)
+
+        for sub in due:
+            plan = self.plan_repo.get(sub.plan_id)
+            customer = self.customer_repo.get(sub.customer_id)
+
+            strategy = self.strategy_factory(plan)
+            discount = self.discount_factory(sub.discount_id)
+            tax_calc, tax_context = self.tax_factory(customer)
+
+            usage = self.usage_repo.sum_for_period(
+                sub.id,
+                "units",
+                sub.current_period_start,
+                sub.current_period_end,
+            )
+
+            invoice_count = self.invoice_repo.count_for_subscription(sub.id)
+
+            invoice = build_invoice(
+                subscription=sub,
+                plan=plan,
+                strategy=strategy,
+                discount=discount,
+                tax_calc=tax_calc,
+                tax_context=tax_context,
+                usage_quantity=usage,
+                period_start=sub.current_period_start,
+                period_end=sub.current_period_end,
+                invoice_count_so_far=invoice_count,
+            )
+
+            try:
+                invoice.status = InvoiceStatus.ISSUED
+                saved_invoice = self.invoice_repo.add(invoice)
+        
+                for li in invoice.line_items:
+                    self.line_item_repo.add(
+                        InvoiceLineItem(
+                            id=None,
+                            invoice_id=saved_invoice.id,
+                            description=li.description,
+                            amount=li.amount,
+                            kind=li.kind,
+                        )
+                    )
+                self.ledger_repo.add(
+                    LedgerEntry(
+                        id=None,
+                        invoice_id=saved_invoice.id,
+                        customer_id=sub.customer_id,
+                        amount=invoice.total,
+                        direction=LedgerDirection.DEBIT,
+                        reason="INVOICE",
+                    )
+                )
+
+                new_start = sub.current_period_end
+                new_end = sub.current_period_end.replace(
+                    month=sub.current_period_end.month + 1 if sub.current_period_end.month < 12 else 1,
+                    year=sub.current_period_end.year + (1 if sub.current_period_end.month == 12 else 0)
+                )
+
+                self.subscription_repo.update_period(
+                    sub.id,
+                    new_start,
+                    new_end,
+                )
+
+                invoices_created += 1
+
+            except Exception as e:
+                if "UNIQUE" in str(e):
+                    invoices_skipped_duplicate += 1
+                else:
+                    raise
+
+
+        return BillingResult(
+            invoices_created=invoices_created,
+            invoices_skipped_duplicate=invoices_skipped_duplicate,
+            trials_activated=trials_activated,
+        )
     # --------------------------------------------------------
     def upgrade_subscription(self, subscription_id: int, new_plan_id: int, switch_date: date) -> None:
         """Mid-cycle upgrade — Day 4 stretch."""

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from billing_engine.models import Invoice
-
+import random
 
 @dataclass(frozen=True)
 class PaymentResult:
@@ -41,13 +41,17 @@ class ScriptedGateway(PaymentGateway):
     """
 
     def __init__(self, results: list[PaymentResult]) -> None:
-        # TODO Day 3
-        raise NotImplementedError("Day 3: implement ScriptedGateway.__init__")
+        self.results = results
+        self.index = 0
 
     def charge(self, invoice: Invoice) -> PaymentResult:
-        # TODO Day 3
-        raise NotImplementedError("Day 3: implement ScriptedGateway.charge")
+        if self.index >= len(self.results):
+            # default fallback (safe behavior)
+            return PaymentResult(success=True)
 
+        result = self.results[self.index]
+        self.index += 1
+        return result
 
 # ----------------------------------------------------------------
 # Fake-random — for the CLI demo
@@ -56,9 +60,14 @@ class FakeRandomGateway(PaymentGateway):
     """Succeeds at a configurable rate; seeded for reproducibility."""
 
     def __init__(self, success_rate: float = 0.7, seed: Optional[int] = None) -> None:
-        # TODO Day 3
-        raise NotImplementedError("Day 3: implement FakeRandomGateway.__init__")
+        self.success_rate = success_rate
+        self.random = random.Random(seed)
 
     def charge(self, invoice: Invoice) -> PaymentResult:
-        # TODO Day 3
-        raise NotImplementedError("Day 3: implement FakeRandomGateway.charge")
+        if self.random.random() < self.success_rate:
+            return PaymentResult(success=True)
+
+        return PaymentResult(
+            success=False,
+            failure_reason="PAYMENT FAILED"
+        )
